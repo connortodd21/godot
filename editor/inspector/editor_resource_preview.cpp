@@ -139,7 +139,7 @@ void EditorResourcePreview::_thread_func(void *ud) {
 	erp->_thread();
 }
 
-void EditorResourcePreview::_preview_ready(const String &p_path, int p_hash, const Ref<Texture2D> &p_texture, const Ref<Texture2D> &p_small_texture, const Callable &p_callback, const Dictionary &p_metadata) {
+void EditorResourcePreview::_preview_ready(const String &p_path, int p_hash, const Ref<Texture2D> &p_texture, const Ref<Texture2D> &p_small_texture, const Callable &p_callback, const Dictionary &p_metadata, const String &p_resource_path = String()) {
 	{
 		MutexLock lock(preview_mutex);
 
@@ -159,8 +159,11 @@ void EditorResourcePreview::_preview_ready(const String &p_path, int p_hash, con
 		item.last_hash = p_hash;
 		item.modified_time = modified_time;
 		item.preview_metadata = p_metadata;
+		item.resource_path = p_resource_path;
 
 		cache[p_path] = item;
+
+		item.resource_path = p_resource_path;
 	}
 	p_callback.call_deferred(p_path, p_texture, p_small_texture);
 }
@@ -306,7 +309,7 @@ void EditorResourcePreview::_iterate() {
 	if (item.resource.is_valid()) {
 		Dictionary preview_metadata;
 		_generate_preview(texture, small_texture, item, String(), preview_metadata);
-		_preview_ready(item.path, item.resource->hash_edited_version_for_preview(), texture, small_texture, item.callback, preview_metadata);
+		_preview_ready(item.path, item.resource->hash_edited_version_for_preview(), texture, small_texture, item.callback, preview_metadata, item.resource->get_path());
 		return;
 	}
 
@@ -567,6 +570,18 @@ void EditorResourcePreview::check_for_invalidation(const String &p_path) {
 				cache.erase(p_path);
 				call_invalidated = true;
 			}
+		}
+
+		// Also invalidate ID entries with stale resource paths
+		Vector<String> to_erase;
+		for (const KeyValue<String, Item> &kv : cache) {
+			if (kv.key.begins_with("ID:") && kv.value.resource_path == p_path) {
+				to_erase.push_back(kv.key);
+			}
+		}
+		for (const String &key : to_erase) {
+			cache.erase(key);
+			call_invalidated = true;
 		}
 	}
 
